@@ -1,4 +1,5 @@
 use core::time::Duration;
+
 use std::{
     net::{SocketAddr, TcpListener},
     path::Path,
@@ -8,19 +9,17 @@ use std::{
 use anyhow::{anyhow, Context as _};
 use minicbor::{data::Type, Decode, Decoder, Encode};
 use tracing::{debug, error, trace};
-use tracing_subscriber::prelude::*;
-use tracing_subscriber::{filter::LevelFilter, fmt, EnvFilter};
 
 pub use config::*;
 use ockam::{
     Address, Context, MessageSendReceiveOptions, NodeBuilder, Route, TcpConnectionOptions,
     TcpTransport,
 };
-use ockam_api::cli_state::{CliState, NodeState};
+use ockam_api::cli_state::{CliState, StateDirTrait, StateItemTrait};
 use ockam_api::config::lookup::{InternetAddress, LookupMeta};
 use ockam_api::nodes::NODEMANAGER_ADDR;
 use ockam_core::api::{RequestBuilder, Response, Status};
-use ockam_core::env::get_env;
+
 use ockam_core::flow_control::FlowControls;
 use ockam_core::DenyAll;
 use ockam_multiaddr::proto::{DnsAddr, Ip4, Ip6, Project, Service, Space, Tcp};
@@ -36,6 +35,7 @@ use crate::{CommandGlobalOpts, OutputFormat, Result};
 pub mod api;
 pub mod exitcode;
 pub mod orchestrator_api;
+pub mod parsers;
 
 mod config;
 pub(crate) mod output;
@@ -45,10 +45,7 @@ pub const DEFAULT_CONTROLLER_ADDRESS: &str = "/dnsaddr/orchestrator.ockam.io/tcp
 #[derive(Clone)]
 pub enum RpcMode<'a> {
     Embedded,
-    Background {
-        node_state: NodeState,
-        tcp: Option<&'a TcpTransport>,
-    },
+    Background { tcp: Option<&'a TcpTransport> },
 }
 
 pub struct RpcBuilder<'a> {
@@ -83,10 +80,7 @@ impl<'a> RpcBuilder<'a> {
     /// TcpTransport per Context.
     pub fn tcp<T: Into<Option<&'a TcpTransport>>>(mut self, tcp: T) -> Result<Self> {
         if let Some(tcp) = tcp.into() {
-            self.mode = RpcMode::Background {
-                node_state: self.opts.state.nodes.get(&self.node_name)?,
-                tcp: Some(tcp),
-            };
+            self.mode = RpcMode::Background { tcp: Some(tcp) };
         }
         Ok(self)
     }
@@ -136,17 +130,13 @@ impl<'a> Rpc<'a> {
         opts: &'a CommandGlobalOpts,
         node_name: &str,
     ) -> Result<Rpc<'a>> {
-        let cfg = opts.state.nodes.get(node_name)?;
         Ok(Rpc {
             ctx,
             buf: Vec::new(),
             opts,
             node_name: node_name.to_string(),
             to: NODEMANAGER_ADDR.into(),
-            mode: RpcMode::Background {
-                node_state: cfg,
-                tcp: None,
-            },
+            mode: RpcMode::Background { tcp: None },
             flow_controls: Default::default(),
         })
     }
@@ -199,11 +189,14 @@ impl<'a> Rpc<'a> {
         let mut to = self.to.clone();
         let route = match self.mode {
             RpcMode::Embedded => to,
-            RpcMode::Background {
-                ref node_state,
-                ref tcp,
-            } => {
-                let port = node_state.setup()?.default_tcp_listener()?.addr.port();
+            RpcMode::Background { ref tcp } => {
+                let node_state = self.opts.state.nodes.get(&self.node_name)?;
+                let port = node_state
+                    .config()
+                    .setup()
+                    .default_tcp_listener()?
+                    .addr
+                    .port();
                 let addr_str = format!("localhost:{port}");
                 let addr = match tcp {
                     None => {
@@ -334,15 +327,6 @@ where
     Ok(b)
 }
 
-pub fn print_output<T>(b: T, output_format: &OutputFormat) -> Result<T>
-where
-    T: Output + serde::Serialize,
-{
-    let o = get_output(&b, output_format)?;
-    print!("{o}");
-    Ok(b)
-}
-
 fn get_output<T>(b: &T, output_format: &OutputFormat) -> Result<String>
 where
     T: Output + serde::Serialize,
@@ -466,47 +450,6 @@ pub fn find_available_port() -> Result<u16> {
     Ok(address.port())
 }
 
-pub fn setup_logging(verbose: u8, no_color: bool) {
-    let ockam_crates = [
-        "ockam",
-        "ockam_node",
-        "ockam_core",
-        "ockam_command",
-        "ockam_identity",
-        "ockam_transport_tcp",
-        "ockam_vault",
-        "ockam_vault_sync_core",
-    ];
-    let builder = EnvFilter::builder();
-    // If `verbose` is not set, try to read the log level from the OCKAM_LOG env variable.
-    // If both `verbose` and OCKAM_LOG are not set, logging will not be enabled.
-    // Otherwise, use `verbose` to define the log level.
-    let filter = match verbose {
-        0 => match get_env::<String>("OCKAM_LOG") {
-            Ok(Some(s)) if !s.is_empty() => builder.with_env_var("OCKAM_LOG").from_env_lossy(),
-            _ => return,
-        },
-        1 => builder
-            .with_default_directive(LevelFilter::INFO.into())
-            .parse_lossy(ockam_crates.map(|c| format!("{c}=info")).join(",")),
-        2 => builder
-            .with_default_directive(LevelFilter::DEBUG.into())
-            .parse_lossy(ockam_crates.map(|c| format!("{c}=debug")).join(",")),
-        _ => builder
-            .with_default_directive(LevelFilter::TRACE.into())
-            .parse_lossy(ockam_crates.map(|c| format!("{c}=trace")).join(",")),
-    };
-    let fmt = fmt::Layer::default().with_ansi(!no_color);
-    let result = tracing_subscriber::registry()
-        .with(filter)
-        .with(tracing_error::ErrorLayer::default())
-        .with(fmt)
-        .try_init();
-    if result.is_err() {
-        eprintln!("Failed to initialise tracing logging.");
-    }
-}
-
 #[allow(unused)]
 pub fn print_path(p: &Path) -> String {
     p.to_str().unwrap_or("<unprintable>").to_string()
@@ -605,7 +548,8 @@ pub fn process_nodes_multiaddr(
                 let alias = proto
                     .cast::<Node>()
                     .ok_or_else(|| anyhow!("invalid node address protocol"))?;
-                let node_setup = cli_state.nodes.get(&alias)?.setup()?;
+                let node_state = cli_state.nodes.get(&alias)?;
+                let node_setup = node_state.config().setup();
                 let addr = node_setup.default_tcp_listener()?.maddr()?;
                 processed_addr.try_extend(&addr)?
             }
@@ -629,7 +573,8 @@ pub fn clean_nodes_multiaddr(
         match p.code() {
             Node::CODE => {
                 let alias = p.cast::<Node>().expect("Failed to parse node name");
-                let node_setup = cli_state.nodes.get(&alias)?.setup()?;
+                let node_state = cli_state.nodes.get(&alias)?;
+                let node_setup = node_state.config().setup();
                 let addr = &node_setup.default_tcp_listener()?.addr;
                 match addr {
                     InternetAddress::Dns(dns, _) => new_ma.push_back(DnsAddr::new(dns))?,
@@ -681,8 +626,9 @@ pub fn random_name() -> String {
 mod tests {
     use super::*;
     use ockam_api::cli_state;
-    use ockam_api::cli_state::traits::StateTrait;
-    use ockam_api::cli_state::{IdentityConfig, NodeConfig, VaultConfig};
+    use ockam_api::cli_state::identities::IdentityConfig;
+    use ockam_api::cli_state::traits::StateDirTrait;
+    use ockam_api::cli_state::{NodeConfig, VaultConfig};
     use ockam_api::nodes::models::transport::{CreateTransportJson, TransportMode, TransportType};
 
     #[test]
@@ -717,7 +663,7 @@ mod tests {
 
         let v_name = cli_state::random_name();
         let v_config = VaultConfig::default();
-        cli_state.vaults.create(&v_name, v_config).await?;
+        cli_state.vaults.create_async(&v_name, v_config).await?;
         let v = cli_state.vaults.get(&v_name)?.get().await?;
         let idt = cli_state
             .get_identities(v)
@@ -734,12 +680,9 @@ mod tests {
         let n_state = cli_state
             .nodes
             .create("n1", NodeConfig::try_from(&cli_state)?)?;
-        let n_setup = n_state.setup()?;
-        n_state.set_setup(&n_setup.add_transport(CreateTransportJson::new(
-            TransportType::Tcp,
-            TransportMode::Listen,
-            "127.0.0.0:4000",
-        )?))?;
+        n_state.set_setup(&n_state.config().setup_mut().add_transport(
+            CreateTransportJson::new(TransportType::Tcp, TransportMode::Listen, "127.0.0.0:4000")?,
+        ))?;
 
         let test_cases = vec![
             (

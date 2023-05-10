@@ -1,10 +1,9 @@
-//! XX (Noise Protocol) implementation of an Ockam Key Exchanger.
+//! In order to support a variety of key exchange protocols [Ockam][main-ockam-crate-link] crate uses an abstract Key Exchange trait.
 //!
-//! This crate contains the key exchange types of the Ockam library and is intended
-//! for use by other crates that provide features and add-ons to the main
-//! Ockam library.
+//! This crate provides an implementation of Key Exchange using [Noise][noise-protocol-framework] protocol with XX pattern.
+//! [noise-protocol-framework]: http://www.noiseprotocol.org/noise.html
 //!
-//! The main Ockam crate re-exports types defined in this crate.
+//! The main [Ockam][main-ockam-crate-link] has optional dependency on this crate.
 #![deny(unsafe_code)]
 #![warn(
     missing_docs,
@@ -46,6 +45,11 @@ impl<D> XXVault for D where
     D: SecretVault + Hasher + AsymmetricVault + SymmetricVault + Send + Sync + 'static
 {
 }
+
+/// Vault with required functionalities after XX key exchange
+pub trait XXInitializedVault: SecretVault + SymmetricVault + Send + Sync + 'static {}
+
+impl<D> XXInitializedVault for D where D: SecretVault + SymmetricVault + Send + Sync + 'static {}
 
 mod initiator;
 mod state;

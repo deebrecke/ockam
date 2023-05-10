@@ -3,7 +3,8 @@ use clap::Args;
 
 use ockam::Context;
 use ockam_api::cli_state;
-use ockam_api::cli_state::traits::{StateItemDirTrait, StateTrait};
+use ockam_api::cli_state::identities::IdentityConfig;
+use ockam_api::cli_state::traits::{StateDirTrait, StateItemTrait};
 
 use ockam_core::vault::{Secret, SecretAttributes, SecretPersistence, SecretType, SecretVault};
 use ockam_identity::{IdentityChangeConstants, KeyAttributes};
@@ -52,7 +53,7 @@ async fn run_impl(opts: CommandGlobalOpts, cmd: AttachKeyCommand) -> crate::Resu
             .await?
     };
     let idt_name = cli_state::random_name();
-    let idt_config = cli_state::IdentityConfig::new(&idt).await;
+    let idt_config = IdentityConfig::new(&idt).await;
     opts.state.identities.create(&idt_name, idt_config)?;
     println!("Identity attached to vault: {idt_name}");
     Ok(())

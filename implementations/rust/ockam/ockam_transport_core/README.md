@@ -8,7 +8,18 @@
 Ockam is a library for building devices that communicate securely, privately
 and trustfully with cloud services and other devices.
 
-This crate provides the common code shared among the different ockam's transport protocols.
+This crate provides the common code shared among the different Ockam's transport protocols.
+
+Each specific protocol is then supported in its own crate. For example, the TCP protocol is supported in the `ockam_transport_tcp` crate.
+
+Currently available transports include:
+
+* `ockam_transport_tcp` - TCP transport
+* `ockam_transport_udp` - UDP transport
+* `ockam_transport_ble` - Bluetooth Low Energy Transport
+* `ockam_transport_websocket` - WebSocket Transport
+* `ockam_transport_uds` - Unix Domain Socket Transport
+
 
 ## Usage
 
@@ -16,10 +27,8 @@ Add this to your `Cargo.toml`:
 
 ```
 [dependencies]
-ockam_transport_core = "0.51.0"
+ockam_transport_core = "0.53.0"
 ```
-
-This crate requires the rust standard library `"std"`.
 
 ## License
 

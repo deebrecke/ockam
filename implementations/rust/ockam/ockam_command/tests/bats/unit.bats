@@ -37,12 +37,6 @@ teardown() {
   assert_success
 
   # Check we can start service, but only once with the same name
-  run "$OCKAM" service start vault my_vault --node n1
-  assert_success
-  run "$OCKAM" service start vault my_vault --node n1
-  assert_failure
-
-  # Check we can start service, but only once with the same name
   run "$OCKAM" service start identity my_identity --node n1
   assert_success
   run "$OCKAM" service start identity my_identity --node n1
@@ -72,13 +66,13 @@ teardown() {
   # Create node, check that it has one of the default services running
   run "$OCKAM" node create "$n"
   assert_success
-  assert_output --partial "/service/vault_service"
+  assert_output --partial "/service/identity_service"
 
   # Stop node, restart it, and check that the service is up again
   $OCKAM node stop "$n"
   run "$OCKAM" node start "$n"
   assert_success
-  assert_output --partial "/service/vault_service"
+  assert_output --partial "/service/identity_service"
 }
 
 # ===== VAULT
@@ -343,34 +337,34 @@ teardown() {
 }
 
 @test "secure channel - send message directly using secure multiaddr" {
-    run "$OCKAM" node create n1
-    assert_success
-    run "$OCKAM" node create n2
-    assert_success
+  run "$OCKAM" node create n1
+  assert_success
+  run "$OCKAM" node create n2
+  assert_success
 
-    msg=$(random_str)
-    run "$OCKAM" message send "$msg" --timeout 5 --from /node/n1 --to "/node/n2/secure/api/service/uppercase"
-    assert_success
-    assert_output "$(to_uppercase "$msg")"
+  msg=$(random_str)
+  run "$OCKAM" message send "$msg" --timeout 5 --from /node/n1 --to "/node/n2/secure/api/service/uppercase"
+  assert_success
+  assert_output "$(to_uppercase "$msg")"
 }
 
 # ===== RELAY
 
 @test "relay - create relay with default parameters" {
   skip_if_orchestrator_tests_not_enabled
-  load_orchestrator_data
+  copy_local_orchestrator_data
 
-    port=7100
+  port=7100
 
-  run "$OCKAM" node create blue --project "$PROJECT_JSON_PATH"
+  run "$OCKAM" node create blue
   assert_success
-  $OCKAM tcp-outlet create --at /node/blue --from /service/outlet --to 127.0.0.1:5000
+  $OCKAM tcp-outlet create --at /node/blue --to 127.0.0.1:5000
 
   fwd="$(random_str)"
   run "$OCKAM" relay create $fwd
   assert_success
 
-  run "$OCKAM" node create green --project "$PROJECT_JSON_PATH"
+  run "$OCKAM" node create green
   assert_success
   $OCKAM secure-channel create --from /node/green --to "/project/default/service/forward_to_$fwd/service/api" |
     $OCKAM tcp-inlet create --at /node/green --from "127.0.0.1:$port" --to -/service/outlet
@@ -459,11 +453,14 @@ teardown() {
   assert_success
 
   # Create inlet/outlet pair
-  run $OCKAM tcp-outlet create --at /node/n1 --from /service/outlet --to "127.0.0.1:$outlet_port" --alias "test-outlet"
+  run $OCKAM tcp-outlet create --at /node/n1 --to "127.0.0.1:$outlet_port" --alias "test-outlet"
   assert_output --partial "/service/outlet"
   assert_success
 
   run $OCKAM tcp-inlet create --at /node/n2 --from 127.0.0.1:$inlet_port --to /node/n1/service/outlet --alias "test-inlet"
+  assert_success
+
+  run $OCKAM tcp-inlet create --at /node/n2 --from 6102 --to /node/n1/service/outlet
   assert_success
 
   # Check that inlet is available for deletion and delete it
@@ -486,8 +483,15 @@ teardown() {
   run "$OCKAM" node create n1
   assert_success
 
-  run $OCKAM tcp-outlet create --at /node/n1 --from /service/outlet --to "127.0.0.1:$port" --alias "test-outlet"
+  only_port=6104
+  run "$OCKAM" node create n2
+  assert_success
+
+  run $OCKAM tcp-outlet create --at /node/n1 --to "127.0.0.1:$port" --alias "test-outlet"
   assert_output --partial "/service/outlet"
+  assert_success
+
+  run $OCKAM tcp-outlet create --at /node/n2 --to $only_port
   assert_success
 
   run $OCKAM tcp-outlet show test-outlet --node /node/n1
@@ -524,7 +528,7 @@ teardown() {
   port=6105
   run "$OCKAM" node create n1
 
-  run $OCKAM tcp-outlet create --at /node/n1 --from /service/outlet --to "127.0.0.1:$port" --alias "test-outlet"
+  run $OCKAM tcp-outlet create --at /node/n1 --to "127.0.0.1:$port" --alias "test-outlet"
   assert_output --partial "/service/outlet"
   assert_success
 
@@ -558,7 +562,7 @@ teardown() {
   run "$OCKAM" node create n1
   assert_success
 
-  run $OCKAM tcp-outlet create --at /node/n1 --from /service/outlet --to "127.0.0.1:$port" --alias "test-outlet"
+  run $OCKAM tcp-outlet create --at /node/n1 --to "127.0.0.1:$port" --alias "test-outlet"
   assert_output --partial "/service/outlet"
   assert_success
 
@@ -577,7 +581,7 @@ teardown() {
   run "$OCKAM" node create n2
   assert_success
 
-  $OCKAM tcp-outlet create --at /node/n1 --from /service/outlet --to 127.0.0.1:5000
+  $OCKAM tcp-outlet create --at /node/n1 --to 127.0.0.1:5000
   $OCKAM tcp-inlet create --at /node/n2 --from "127.0.0.1:$port" --to /node/n1/service/outlet
 
   run curl --fail --head --max-time 10 "127.0.0.1:$port"
@@ -591,7 +595,7 @@ teardown() {
   run "$OCKAM" node create blue
   assert_success
 
-  $OCKAM tcp-outlet create --at /node/blue --from /service/outlet --to 127.0.0.1:5000
+  $OCKAM tcp-outlet create --at /node/blue --to 127.0.0.1:5000
   $OCKAM relay create blue --at /node/relay --to /node/blue
 
   run "$OCKAM" node create green

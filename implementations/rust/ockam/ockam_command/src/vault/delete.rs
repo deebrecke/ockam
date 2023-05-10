@@ -3,7 +3,7 @@ use clap::Args;
 use colorful::Colorful;
 
 use ockam::Context;
-use ockam_api::cli_state::traits::StateTrait;
+use ockam_api::cli_state::traits::StateDirTrait;
 use ockam_api::cli_state::CliStateError;
 
 use crate::terminal::ConfirmResult;
@@ -46,7 +46,7 @@ async fn run_impl(
                 return Ok(());
             }
 
-            state.delete(&name).await?;
+            state.delete(&name)?;
 
             opts.terminal
                 .stdout()

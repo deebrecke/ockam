@@ -1,25 +1,25 @@
 # ockam_transport_udp
 
+[![crate][crate-image]][crate-link]
+[![docs][docs-image]][docs-link]
+[![license][license-image]][license-link]
+[![discuss][discuss-image]][discuss-link]
+
+Ockam is a library for building devices that communicate securely, privately
+and trustfully with cloud services and other devices.
+
+This crate provides a UDP Transport for Ockam's Routing Protocol.
+
+### Examples
+
 ## Usage
 
 Add this to your `Cargo.toml`:
 
 ```
 [dependencies]
-ockam_transport_udp = "0.19.0"
+ockam_transport_udp = "0.20.0"
 ```
-
-## Test
-
-In `ockam_transport_udp` directory, ran `cargo test`.
-
-## Examples
-
-In `ockam_transport_udp` directory, run an echo server
-with command `cargo run --exapmle echo_server`
-
-Then, run a client that sends a hello message to the server
-with command `cargo run --example client`
 
 ## License
 
@@ -27,11 +27,11 @@ This code is licensed under the terms of the [Apache License 2.0][license-link].
 
 [main-ockam-crate-link]: https://crates.io/crates/ockam
 
-[crate-image]: https://img.shields.io/crates/v/ockam_transport_tcp.svg
-[crate-link]: https://crates.io/crates/ockam_transport_tcp
+[crate-image]: https://img.shields.io/crates/v/ockam_transport_udp.svg
+[crate-link]: https://crates.io/crates/ockam_transport_udp
 
-[docs-image]: https://docs.rs/ockam_transport_tcp/badge.svg
-[docs-link]: https://docs.rs/ockam_transport_tcp
+[docs-image]: https://docs.rs/ockam_transport_udp/badge.svg
+[docs-link]: https://docs.rs/ockam_transport_udp
 
 [license-image]: https://img.shields.io/badge/License-Apache%202.0-green.svg
 [license-link]: https://github.com/build-trust/ockam/blob/HEAD/LICENSE

@@ -25,6 +25,7 @@ use ockam_node::Context;
 use ockam_transport_tcp::{TcpInletOptions, TcpOutletOptions};
 use std::collections::BTreeMap;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use super::{NodeManager, NodeManagerWorker};
 
@@ -110,9 +111,16 @@ impl NodeManagerWorker {
         // forwarder to the actual outlet on the target node. However it is also
         // possible that there is just a single secure channel used to go directly
         // to another node.
+
         let connection_instance = {
+            let duration = req
+                .wait_for_outlet_duration()
+                .unwrap_or(Duration::from_secs(5));
+
             let connection = Connection::new(ctx, req.outlet_addr(), &flow_controls)
-                .with_authorized_identity(req.authorized());
+                .with_authorized_identity(req.authorized())
+                .with_timeout(duration);
+
             NodeManager::connect(manager.clone(), connection).await?
         };
 
@@ -551,14 +559,14 @@ fn replacer(
 
                 let node_manager = node_manager_arc.write().await;
 
+                let options = TcpInletOptions::new()
+                    .with_incoming_access_control(access)
+                    .as_consumer(&flow_controls);
+
                 // Finally attempt to create a new inlet using the new route:
                 let new_inlet_address = node_manager
                     .tcp_transport
-                    .create_inlet(
-                        bind,
-                        normalized_route,
-                        TcpInletOptions::new().with_incoming_access_control(access),
-                    )
+                    .create_inlet(bind, normalized_route, options)
                     .await?
                     .1;
                 *inlet_address_arc.lock().unwrap() = new_inlet_address;

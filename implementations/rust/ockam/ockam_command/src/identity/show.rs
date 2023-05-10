@@ -1,10 +1,11 @@
 use crate::util::output::Output;
-use crate::util::print_output;
+use crate::util::println_output;
 use crate::{docs, CommandGlobalOpts, EncodeFormat, Result};
 use anyhow::anyhow;
 use clap::Args;
 use core::fmt::Write;
 use ockam::identity::identity::IdentityChangeHistory;
+use ockam_api::cli_state::traits::{StateDirTrait, StateItemTrait};
 use ockam_api::cli_state::CliState;
 use ockam_api::nodes::models::identity::{LongIdentityResponse, ShortIdentityResponse};
 
@@ -14,8 +15,8 @@ const AFTER_LONG_HELP: &str = include_str!("./static/show/after_long_help.txt");
 /// Show the details of a node
 #[derive(Clone, Debug, Args)]
 #[command(
-    long_about = docs::about(LONG_ABOUT),
-    after_long_help = docs::after_help(AFTER_LONG_HELP)
+long_about = docs::about(LONG_ABOUT),
+after_long_help = docs::after_help(AFTER_LONG_HELP)
 )]
 pub struct ShowCommand {
     #[arg(default_value_t = default_identity_name())]
@@ -49,16 +50,16 @@ fn run_impl(opts: CommandGlobalOpts, cmd: ShowCommand) -> crate::Result<()> {
     }
     let state = opts.state.identities.get(&cmd.name)?;
     if cmd.full {
-        let identity = state.config.change_history.export()?;
+        let identity = state.config().identity.export()?;
         if Some(EncodeFormat::Hex) == cmd.encoding {
-            print_output(identity, &opts.global_args.output_format)?;
+            println_output(identity, &opts.global_args.output_format)?;
         } else {
             let output = LongIdentityResponse::new(identity);
-            print_output(output, &opts.global_args.output_format)?;
+            println_output(output, &opts.global_args.output_format)?;
         }
     } else {
-        let output = ShortIdentityResponse::new(state.config.identifier.to_string());
-        print_output(output, &opts.global_args.output_format)?;
+        let output = ShortIdentityResponse::new(state.config().identity.identifier().to_string());
+        println_output(output, &opts.global_args.output_format)?;
     }
     Ok(())
 }
@@ -81,12 +82,12 @@ impl Output for ShortIdentityResponse<'_> {
 }
 
 fn default_identity_name() -> String {
-    let state =
-        CliState::try_default().expect("Failed to load CLI state. Try running 'ockam reset'");
+    let state = CliState::try_default()
+        .expect("Failed to load the local Ockam configuration. Try running 'ockam reset'");
     state
         .identities
         .default()
-        .map(|i| i.name)
+        .map(|i| i.name().to_string())
         // Return empty string so we can return a proper error message from the command
         .unwrap_or_else(|_| "".to_string())
 }

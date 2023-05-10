@@ -20,7 +20,7 @@ Add this to your `Cargo.toml`:
 
 ```
 [dependencies]
-ockam-ffi = "0.70.0"
+ockam-ffi = "0.72.0"
 ```
 
 ## License
@@ -28,7 +28,6 @@ ockam-ffi = "0.70.0"
 This code is licensed under the terms of the [Apache License 2.0][license-link].
 
 [main-ockam-crate-link]: https://crates.io/crates/ockam
-[ockam-ffi-crate-link]: https://crates.io/crates/ockam-ffi
 
 [crate-image]: https://img.shields.io/crates/v/ockam-ffi.svg
 [crate-link]: https://crates.io/crates/ockam-ffi

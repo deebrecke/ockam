@@ -4,7 +4,7 @@ use rand::prelude::random;
 
 use ockam::Context;
 use ockam_api::cli_state;
-use ockam_api::cli_state::traits::StateTrait;
+use ockam_api::cli_state::traits::StateDirTrait;
 
 use crate::util::node_rpc;
 use crate::{fmt_info, fmt_ok, CommandGlobalOpts};
@@ -42,12 +42,15 @@ async fn run_impl(
 ) -> crate::Result<()> {
     let CreateCommand { name, aws_kms, .. } = cmd;
     let config = cli_state::VaultConfig::new(aws_kms)?;
-    if !opts.state.vaults.has_default()? {
+    if !opts.state.vaults.is_empty()? {
         opts.terminal.write_line(&fmt_info!(
             "This is the first vault to be created in this environment. It will be set as the default vault"
         ))?;
     }
-    opts.state.vaults.create(&name, config.clone()).await?;
+    opts.state
+        .vaults
+        .create_async(&name, config.clone())
+        .await?;
 
     opts.terminal
         .stdout()

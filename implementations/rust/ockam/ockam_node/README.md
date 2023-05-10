@@ -1,4 +1,4 @@
-# ockam
+# ockam_node
 
 [![crate][crate-image]][crate-link]
 [![docs][docs-image]][docs-link]
@@ -21,7 +21,7 @@ Add this to your `Cargo.toml`:
 
 ```
 [dependencies]
-ockam_node = "0.81.0"
+ockam_node = "0.83.0"
 ```
 
 ## License

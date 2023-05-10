@@ -1,5 +1,8 @@
-//! Orchestrate end-to-end encryption, mutual authentication, key management,
-//! credential management, and authorization policy enforcement — at scale.
+//! This crate provides the ockam command line application to:
+//!  - start Ockam nodes and interact with them
+//!  - manage projects and spaces hosted within the Ockam Orchestrator
+//!
+//! For more information please visit the [command guide](https://docs.ockam.io/reference/command)
 
 mod admin;
 mod authenticated;
@@ -11,7 +14,9 @@ mod docs;
 mod enroll;
 mod error;
 mod identity;
+mod kafka;
 mod lease;
+mod logs;
 mod manpages;
 mod markdown;
 mod message;
@@ -37,6 +42,8 @@ mod worker;
 
 use crate::admin::AdminCommand;
 use crate::authority::AuthorityCommand;
+use crate::logs::setup_logging;
+use crate::node::NodeSubcommand;
 use crate::run::RunCommand;
 use crate::subscription::SubscriptionCommand;
 use crate::terminal::{Terminal, TerminalStream};
@@ -49,12 +56,14 @@ use credential::CredentialCommand;
 use enroll::EnrollCommand;
 use error::{Error, Result};
 use identity::IdentityCommand;
+use kafka::consumer::KafkaConsumerCommand;
+use kafka::producer::KafkaProducerCommand;
 use lease::LeaseCommand;
 use manpages::ManpagesCommand;
 use markdown::MarkdownCommand;
 use message::MessageCommand;
 use node::NodeCommand;
-use ockam_api::cli_state::CliState;
+use ockam_api::cli_state::{CliState, StateDirTrait};
 use policy::PolicyCommand;
 use project::ProjectCommand;
 use relay::RelayCommand;
@@ -63,13 +72,14 @@ use secure_channel::{listener::SecureChannelListenerCommand, SecureChannelComman
 use service::ServiceCommand;
 use space::SpaceCommand;
 use status::StatusCommand;
+use std::path::PathBuf;
 use tcp::{
     connection::TcpConnectionCommand, inlet::TcpInletCommand, listener::TcpListenerCommand,
     outlet::TcpOutletCommand,
 };
 use trust_context::TrustContextCommand;
 use upgrade::check_if_an_upgrade_is_available;
-use util::{exitcode, exitcode::ExitCode, setup_logging, OckamConfig};
+use util::{exitcode, exitcode::ExitCode, OckamConfig};
 use vault::VaultCommand;
 use version::Version;
 use worker::WorkerCommand;
@@ -80,15 +90,15 @@ const AFTER_LONG_HELP: &str = include_str!("./static/after_long_help.txt");
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "ockam",
-    term_width = 100,
-    about = docs::about(ABOUT),
-    long_about = docs::about(LONG_ABOUT),
-    after_long_help = docs::after_help(AFTER_LONG_HELP),
-    version,
-    long_version = Version::long(),
-    next_help_heading = "Global Options",
-    disable_help_flag = true
+name = "ockam",
+term_width = 100,
+about = docs::about(ABOUT),
+long_about = docs::about(LONG_ABOUT),
+after_long_help = docs::after_help(AFTER_LONG_HELP),
+version,
+long_version = Version::long(),
+next_help_heading = "Global Options",
+disable_help_flag = true
 )]
 pub struct OckamCommand {
     #[command(subcommand)]
@@ -101,13 +111,13 @@ pub struct OckamCommand {
 #[derive(Debug, Clone, Args)]
 pub struct GlobalArgs {
     #[arg(
-        global = true,
-        long,
-        short,
-        help("Print help information (-h compact, --help extensive)"),
-        long_help("Print help information (-h displays compact help summary, --help displays extensive help summary"),
-        help_heading("Global Options"),
-        action = ArgAction::Help
+    global = true,
+    long,
+    short,
+    help("Print help information (-h compact, --help extensive)"),
+    long_help("Print help information (-h displays compact help summary, --help displays extensive help summary"),
+    help_heading("Global Options"),
+    action = ArgAction::Help
     )]
     help: Option<bool>,
 
@@ -117,11 +127,11 @@ pub struct GlobalArgs {
 
     /// Increase verbosity of trace messages
     #[arg(
-        global = true,
-        long,
-        short,
-        conflicts_with("quiet"),
-        action = ArgAction::Count
+    global = true,
+    long,
+    short,
+    conflicts_with("quiet"),
+    action = ArgAction::Count
     )]
     verbose: u8,
 
@@ -135,11 +145,11 @@ pub struct GlobalArgs {
 
     /// Output format
     #[arg(
-        hide = docs::hide(),
-        global = true,
-        long = "output",
-        value_enum,
-        default_value = "plain"
+    hide = docs::hide(),
+    global = true,
+    long = "output",
+    value_enum,
+    default_value = "plain"
     )]
     output_format: OutputFormat,
 
@@ -157,14 +167,13 @@ impl GlobalArgs {
     // attempting to wrap the OckamCommand as a singleton, also did not work
     // due to the fact the parsers are invoked during `OckamCommand::parse_from(input)`
     // unable to let the parser know about the singleton.
-    //
     fn parse_from_input() -> Self {
         let mut s = Self::default();
         let input = std::env::args()
             .map(replace_hyphen_with_stdin)
             .collect::<Vec<_>>();
-
-        for (i, arg) in input.clone().into_iter().enumerate() {
+        let mut iter = input.iter().peekable();
+        while let Some(arg) = iter.next() {
             match arg.as_str() {
                 "-h" | "--help" => s.help = Some(true),
                 "-q" | "--quiet" => {
@@ -178,9 +187,8 @@ impl GlobalArgs {
                 "--no-color" => s.no_color = true,
                 "--no-input" => s.no_input = true,
                 "--output" => {
-                    let value = input.clone().into_iter().nth(i);
-                    s.output_format = match value {
-                        Some(v) => OutputFormat::from_str(&v, true).expect("Invalid output format"),
+                    s.output_format = match iter.peek() {
+                        Some(v) => OutputFormat::from_str(v, true).expect("Invalid output format"),
                         None => OutputFormat::Plain,
                     }
                 }
@@ -188,7 +196,6 @@ impl GlobalArgs {
                 _ => (),
             }
         }
-
         s
     }
 }
@@ -229,7 +236,7 @@ pub struct CommandGlobalOpts {
 
 impl CommandGlobalOpts {
     fn new(global_args: GlobalArgs, config: OckamConfig) -> Self {
-        let state = CliState::try_default().expect("Failed to load CLI state");
+        let state = CliState::try_default().expect("Failed to load the local Ockam configuration");
         let terminal = Terminal::new(
             global_args.quiet,
             global_args.no_color,
@@ -265,6 +272,9 @@ pub enum OckamSubcommand {
     TcpOutlet(TcpOutletCommand),
     TcpInlet(TcpInletCommand),
 
+    KafkaConsumer(KafkaConsumerCommand),
+    KafkaProducer(KafkaProducerCommand),
+
     SecureChannelListener(SecureChannelListenerCommand),
     SecureChannel(SecureChannelCommand),
 
@@ -297,19 +307,27 @@ pub fn run() {
         check_if_an_upgrade_is_available();
     }
 
-    if !command.global_args.quiet {
-        setup_logging(command.global_args.verbose, command.global_args.no_color);
-        tracing::debug!("{}", Version::short());
-        tracing::debug!("Parsed {:?}", command);
-    }
-
     command.run();
 }
 
 impl OckamCommand {
     pub fn run(self) {
         let config = OckamConfig::load().expect("Failed to load config");
-        let options = CommandGlobalOpts::new(self.global_args, config);
+        let options = CommandGlobalOpts::new(self.global_args.clone(), config);
+
+        let _tracing_guard = if !options.global_args.quiet {
+            let log_path = self.log_path(&options);
+            let guard = setup_logging(
+                options.global_args.verbose,
+                options.global_args.no_color,
+                log_path,
+            );
+            tracing::debug!("{}", Version::short());
+            tracing::debug!("Parsed {:?}", &self);
+            guard
+        } else {
+            None
+        };
 
         // If test_argument_parser is true, command arguments are checked
         // but the command is not executed. This is useful to test arguments
@@ -336,6 +354,9 @@ impl OckamCommand {
             OckamSubcommand::TcpOutlet(c) => c.run(options),
             OckamSubcommand::TcpInlet(c) => c.run(options),
 
+            OckamSubcommand::KafkaConsumer(c) => c.run(options),
+            OckamSubcommand::KafkaProducer(c) => c.run(options),
+
             OckamSubcommand::SecureChannelListener(c) => c.run(options),
             OckamSubcommand::SecureChannel(c) => c.run(options),
 
@@ -357,6 +378,19 @@ impl OckamCommand {
             OckamSubcommand::Manpages(c) => c.run(),
             OckamSubcommand::TrustContext(c) => c.run(options),
         }
+    }
+
+    fn log_path(&self, opts: &CommandGlobalOpts) -> Option<PathBuf> {
+        // If the subcommand is `node create` then return the log path
+        // for the node that is being created
+        if let OckamSubcommand::Node(c) = &self.subcommand {
+            if let NodeSubcommand::Create(c) = &c.subcommand {
+                if let Ok(s) = opts.state.nodes.get(&c.node_name) {
+                    return Some(s.stdout_log());
+                }
+            }
+        }
+        None
     }
 }
 

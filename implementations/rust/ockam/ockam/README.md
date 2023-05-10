@@ -3,8 +3,10 @@
 [![crate][crate-image]][crate-link]
 [![docs][docs-image]][docs-link]
 [![license][license-image]][license-link]
-[![status][status-image]][status-link]
 [![discuss][discuss-image]][discuss-link]
+
+Ockam is a library for building devices that communicate securely, privately
+and trustfully with cloud services and other devices.
 
 End-to-end encrypted, mutually authenticated, secure communication.
 
@@ -26,7 +28,7 @@ to be vulnerable at every point, along their journey, where a transport connecti
 Instead, our application can have a strikingly smaller vulnerability surface and easily make
 _granular authorization decisions about all incoming information and commands._
 
-## Features
+### Features
 
 * End-to-end encrypted, mutually authenticated _secure channels_.
 * Multi-hop, multi-transport, application layer routing.
@@ -35,32 +37,11 @@ _granular authorization decisions about all incoming information and commands._
 * Attribute-based Access Control - credentials with _selective disclosure_.
 * Add-ons for a variety of operating environments, transport protocols, and _cryptographic hardware_.
 
-## Get Started
+### Documentation
 
-* [__End-to-End Encryption with Rust__][e2ee-rust-guide]:
-In this guide, we create two small Rust programs called Alice and Bob. Alice and Bob send each other
-messages, over the network, via a cloud service. They mutually authenticate each other and have a cryptographic
-guarantee that the integrity, authenticity, and confidentiality of their messages is protected end-to-end.
-[👉][e2ee-rust-guide]
+Tutorials, examples and reference guides are available at [docs.ockam.io](https://docs.ockam.io).
 
-* [__Step-by-Step Deep Dive__][step-by-step-rust-guide]:
-In this step-by-step guide we write many small rust programs to understand the various building blocks
-that make up Ockam. We dive into Node, Workers, Routing, Transport, Secure Channels and more.
-[👉][step-by-step-rust-guide]
-
-* [__End-to-End Encryption through Kafka__][e2ee-kafka-guide]:
-In this guide, we show two programs called Alice and Bob. Alice and Bob send each other messages, over
-the network, via a cloud service, _through Kafka_. They mutually authenticate each other and have a
-cryptographic guarantee that the integrity, authenticity, and confidentiality of their messages is protected
-end-to-end. The Kafka instance, the intermediary cloud service and attackers on the network are not be able
-to see or change the contents of en-route messages. The application data in Kafka is encrypted.
-[👉][e2ee-kafka-guide]
-
-* [__Build Secure Remote Access Tunnels__][secure-remote-access-tunnels]:
-In this guide, we'll write a few simple Rust programs to programmatically create secure access tunnels to remote
-services and devices that are running in a private network, behind a NAT. We'll then tunnel arbitrary communication
-protocols through these secure tunnels.
-[👉][secure-remote-access-tunnels]
+[e2ee-rust-guide]: https://docs.ockam.io/reference/libraries/rust
 
 ## Usage
 
@@ -68,7 +49,7 @@ Add this to your `Cargo.toml`:
 
 ```
 [dependencies]
-ockam = "0.84.0"
+ockam = "0.86.0"
 ```
 
 ## License
@@ -83,16 +64,8 @@ This code is licensed under the terms of the [Apache License 2.0][license-link].
 [docs-image]: https://docs.rs/ockam/badge.svg
 [docs-link]: https://docs.rs/ockam
 
-[status-image]: https://img.shields.io/badge/Status-Preview-58E0C9.svg
-[status-link]: https://github.com/build-trust/ockam/blob/develop/SECURITY.md
-
 [license-image]: https://img.shields.io/badge/License-Apache%202.0-green.svg
 [license-link]: https://github.com/build-trust/ockam/blob/HEAD/LICENSE
 
-[discuss-image]: https://img.shields.io/badge/Discuss-On%20Github-ff70b4.svg
+[discuss-image]: https://img.shields.io/badge/Discuss-Github%20Discussions-ff70b4.svg
 [discuss-link]: https://github.com/build-trust/ockam/discussions
-
-[e2ee-rust-guide]: https://github.com/build-trust/ockam/tree/develop/documentation/use-cases/end-to-end-encryption-with-rust#readme
-[e2ee-kafka-guide]: https://github.com/build-trust/ockam/tree/develop/documentation/use-cases/end-to-end-encryption-through-kafka#readme
-[step-by-step-rust-guide]: https://github.com/build-trust/ockam/tree/develop/documentation/guides/rust#readme
-[secure-remote-access-tunnels]: https://github.com/build-trust/ockam/tree/develop/documentation/use-cases/secure-remote-access-tunnels

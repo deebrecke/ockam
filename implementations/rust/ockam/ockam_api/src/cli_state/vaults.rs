@@ -1,5 +1,6 @@
 use super::Result;
-use crate::cli_state::traits::StateItemDirTrait;
+use crate::cli_state::traits::StateItemTrait;
+use crate::cli_state::{CliStateError, StateDirTrait};
 use ockam_identity::IdentitiesVault;
 use ockam_vault::storage::FileStorage;
 use ockam_vault::Vault;
@@ -11,6 +12,20 @@ use std::sync::Arc;
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct VaultsState {
     dir: PathBuf,
+}
+
+impl VaultsState {
+    pub async fn create_async(&self, name: &str, config: VaultConfig) -> Result<VaultState> {
+        if self.exists(name) {
+            return Err(CliStateError::AlreadyExists);
+        }
+        let state = VaultState::new(self.path(name), config)?;
+        state.get().await?;
+        if !self.default_path()?.exists() {
+            self.set_default(name)?;
+        }
+        Ok(state)
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -40,7 +55,7 @@ impl VaultState {
     }
 
     pub fn vault_file_path(&self) -> &PathBuf {
-        self.data_path().expect("Should have data path")
+        &self.data_path
     }
 
     pub async fn identities_vault(&self) -> Result<Arc<dyn IdentitiesVault>> {
@@ -48,6 +63,10 @@ impl VaultState {
         Ok(Arc::new(Vault::new(Some(Arc::new(
             FileStorage::create(path).await?,
         )))))
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
     }
 }
 
@@ -84,82 +103,58 @@ impl VaultConfig {
 
 mod traits {
     use super::*;
+    use crate::cli_state::file_stem;
     use crate::cli_state::traits::*;
-    use crate::cli_state::{file_stem, CliStateError};
     use ockam_core::async_trait;
-    use std::path::Path;
 
     #[async_trait]
-    impl StateTrait for VaultsState {
-        type ItemDir = VaultState;
-        type ItemConfig = VaultConfig;
+    impl StateDirTrait for VaultsState {
+        type Item = VaultState;
+        const DEFAULT_FILENAME: &'static str = "vault";
+        const DIR_NAME: &'static str = "vaults";
+        const HAS_DATA_DIR: bool = true;
 
         fn new(dir: PathBuf) -> Self {
             Self { dir }
-        }
-
-        fn default_filename() -> &'static str {
-            "vault"
-        }
-
-        fn build_dir(root_path: &Path) -> PathBuf {
-            root_path.join("vaults")
-        }
-
-        fn has_data_dir() -> bool {
-            true
         }
 
         fn dir(&self) -> &PathBuf {
             &self.dir
         }
 
-        async fn create(&self, name: &str, config: Self::ItemConfig) -> Result<Self::ItemDir> {
-            let path = {
-                let path = self.path(name);
-                if path.exists() {
-                    return Err(CliStateError::AlreadyExists);
-                }
-                path
-            };
-            let state = Self::ItemDir::new(path, config)?;
-            state.get().await?;
-            if !self.default_path()?.exists() {
-                self.set_default(name)?;
-            }
-            Ok(state)
+        fn create(
+            &self,
+            _name: &str,
+            _config: <<Self as StateDirTrait>::Item as StateItemTrait>::Config,
+        ) -> Result<Self::Item> {
+            unreachable!()
         }
 
-        async fn delete(&self, name: &str) -> Result<()> {
-            // Retrieve vault. If doesn't exist do nothing.
-            let vault = match self.get(name) {
-                Ok(v) => v,
-                Err(CliStateError::NotFound) => return Ok(()),
-                Err(e) => return Err(e),
-            };
-
+        fn delete(&self, name: &str) -> Result<()> {
+            // If doesn't exist do nothing.
+            if !self.exists(name) {
+                return Ok(());
+            }
+            let vault = self.get(name)?;
             // If it's the default, remove link
             if let Ok(default) = self.default() {
                 if default.path == vault.path {
                     let _ = std::fs::remove_file(self.default_path()?);
                 }
             }
-
             // Remove vault files
-            vault.delete().await?;
-
+            vault.delete()?;
             Ok(())
         }
     }
 
     #[async_trait]
-    impl StateItemDirTrait for VaultState {
+    impl StateItemTrait for VaultState {
         type Config = VaultConfig;
 
         fn new(path: PathBuf, config: Self::Config) -> Result<Self> {
             let contents = serde_json::to_string(&config)?;
             std::fs::write(&path, contents)?;
-
             let name = file_stem(&path)?;
             let data_path = VaultState::build_data_path(&name, &path);
             Ok(Self {
@@ -183,34 +178,19 @@ mod traits {
             })
         }
 
-        async fn delete(&self) -> Result<()> {
+        fn delete(&self) -> Result<()> {
             std::fs::remove_file(&self.path)?;
             std::fs::remove_file(&self.data_path)?;
             std::fs::remove_file(self.data_path.with_extension("json.lock"))?;
             Ok(())
         }
 
-        fn name(&self) -> &str {
-            &self.name
-        }
-
         fn path(&self) -> &PathBuf {
             &self.path
         }
 
-        fn data_path(&self) -> Option<&PathBuf> {
-            Some(&self.data_path)
-        }
-
         fn config(&self) -> &Self::Config {
             &self.config
-        }
-    }
-
-    #[async_trait]
-    impl StateItemConfigTrait for VaultConfig {
-        async fn delete(&self) -> Result<()> {
-            unreachable!()
         }
     }
 }

@@ -1,6 +1,6 @@
 //! Configuration files used by the ockam CLI
 
-use crate::cli_state::{CliStateError, CredentialState};
+use crate::cli_state::{CliStateError, CredentialState, StateItemTrait};
 use crate::cloud::project::Project;
 use crate::config::{lookup::ConfigLookup, ConfigValues};
 use crate::error::ApiError;
@@ -160,7 +160,7 @@ impl TryFrom<CredentialState> for TrustContextConfig {
     type Error = CliStateError;
 
     fn try_from(state: CredentialState) -> std::result::Result<Self, Self::Error> {
-        let issuer = state.config()?.issuer;
+        let issuer = state.config().issuer.clone();
         let identity = issuer.export_hex()?;
         let retriever = CredentialRetrieverConfig::FromPath(state);
         let authority = TrustAuthorityConfig::new(identity, Some(retriever));
@@ -171,10 +171,10 @@ impl TryFrom<CredentialState> for TrustContextConfig {
     }
 }
 
-impl TryFrom<Project<'_>> for TrustContextConfig {
+impl TryFrom<Project> for TrustContextConfig {
     type Error = CliStateError;
 
-    fn try_from(project_info: Project<'_>) -> std::result::Result<TrustContextConfig, Self::Error> {
+    fn try_from(project_info: Project) -> std::result::Result<TrustContextConfig, Self::Error> {
         let authority = match (
             &project_info.authority_access_route,
             &project_info.authority_identity,
@@ -191,10 +191,7 @@ impl TryFrom<Project<'_>> for TrustContextConfig {
             _ => None,
         };
 
-        Ok(TrustContextConfig::new(
-            project_info.id.to_string(),
-            authority,
-        ))
+        Ok(TrustContextConfig::new(project_info.id, authority))
     }
 }
 
@@ -282,7 +279,7 @@ impl CredentialRetrieverConfig {
                 CredentialsMemoryRetriever::new(credential.clone()),
             )),
             CredentialRetrieverConfig::FromPath(state) => Ok(Arc::new(
-                CredentialsMemoryRetriever::new(state.config()?.credential()?),
+                CredentialsMemoryRetriever::new(state.config().credential()?),
             )),
             CredentialRetrieverConfig::FromCredentialIssuer(issuer_config) => {
                 let _ = tcp_transport.ok_or_else(|| ApiError::generic("TCP Transport was not provided when credential retriever was defined as an issuer."))?;

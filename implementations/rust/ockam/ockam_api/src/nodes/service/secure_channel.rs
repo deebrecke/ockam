@@ -19,8 +19,8 @@ use ockam_core::compat::sync::Arc;
 use ockam_core::flow_control::{FlowControlId, FlowControlPolicy};
 use ockam_core::route;
 
-use crate::cli_state::traits::StateTrait;
-use crate::cli_state::CliStateError;
+use crate::cli_state::traits::StateDirTrait;
+use crate::cli_state::{CliStateError, StateItemTrait};
 use crate::kafka::KAFKA_SECURE_CHANNEL_CONTROLLER_ADDRESS;
 use crate::nodes::connection::Connection;
 use crate::nodes::service::invalid_multiaddr_error;
@@ -40,7 +40,6 @@ impl NodeManager {
         sc_route: Route,
         authorized_identifiers: Option<Vec<IdentityIdentifier>>,
         timeout: Option<Duration>,
-        flow_control_id: Option<FlowControlId>,
     ) -> Result<(Address, FlowControlId)> {
         // If channel was already created, do nothing.
         if let Some(channel) = self.registry.secure_channels.get_by_route(&sc_route) {
@@ -54,8 +53,7 @@ impl NodeManager {
 
         debug!(%sc_route, "Creating secure channel");
         let timeout = timeout.unwrap_or(Duration::from_secs(120));
-        let sc_flow_control_id =
-            flow_control_id.unwrap_or_else(|| self.flow_controls.generate_id());
+        let sc_flow_control_id = self.flow_controls.generate_id();
         let options = SecureChannelOptions::as_producer(&self.flow_controls, &sc_flow_control_id);
 
         // Just add ourself as consumer for the next hop if it's a producer
@@ -100,7 +98,6 @@ impl NodeManager {
         identity_name: Option<String>,
         ctx: &Context,
         credential_name: Option<String>,
-        flow_control_id: Option<FlowControlId>,
     ) -> Result<(Address, FlowControlId)> {
         let identity = self.get_identity(None, identity_name.clone()).await?;
         let provided_credential = if let Some(credential_name) = credential_name {
@@ -108,7 +105,7 @@ impl NodeManager {
                 self.cli_state
                     .credentials
                     .get(&credential_name)?
-                    .config()?
+                    .config()
                     .credential()?,
             )
         } else {
@@ -122,7 +119,6 @@ impl NodeManager {
                 sc_route,
                 authorized_identifiers,
                 timeout,
-                flow_control_id,
             )
             .await?;
 
@@ -440,7 +436,6 @@ impl NodeManagerWorker {
                 identity.map(|i| i.to_string()),
                 ctx,
                 credential_name.map(|c| c.to_string()),
-                None,
             )
             .await?;
 
