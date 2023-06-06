@@ -2,9 +2,10 @@ use anyhow::{anyhow, Context as _};
 
 use ockam::{Context, TcpListenerOptions, TcpTransport};
 use ockam_api::cli_state;
-use ockam_api::cli_state::traits::StateItemDirTrait;
+use ockam_api::cli_state::traits::StateItemTrait;
 use ockam_api::config::lookup::ProjectLookup;
 
+use ockam_api::cli_state::StateDirTrait;
 use ockam_api::nodes::models::transport::{TransportMode, TransportType};
 use ockam_api::nodes::service::{
     ApiTransport, NodeManagerGeneralOptions, NodeManagerProjectsOptions,
@@ -16,6 +17,7 @@ use std::env::current_exe;
 use std::fs::OpenOptions;
 use std::path::PathBuf;
 use std::process::Command;
+use tracing::{debug, info};
 
 use crate::node::CreateCommand;
 use crate::project::ProjectInfo;
@@ -42,7 +44,7 @@ pub async fn start_embedded_node_with_vault_and_identity(
 
     // This node was initially created as a foreground node
     if !cmd.child_process {
-        init_node_state(opts, &cmd.node_name, vault, identity).await?;
+        init_node_state(opts, &cmd.node_name, vault.as_deref(), identity.as_deref()).await?;
     }
 
     if let Some(p) = trust_opts {
@@ -110,7 +112,7 @@ pub async fn add_project_info_to_node_state(
     let proj_path = if let Some(path) = project_opts.project_path.clone() {
         Some(path)
     } else if let Ok(proj) = opts.state.projects.default() {
-        Some(proj.path)
+        Some(proj.path().clone())
     } else {
         None
     };
@@ -121,15 +123,8 @@ pub async fn add_project_info_to_node_state(
             let proj_info: ProjectInfo = serde_json::from_str(&s)?;
             let proj_lookup = ProjectLookup::from_project(&(&proj_info).into()).await?;
 
-            // FIXME What is this doing?.  We need to simplify how this work.
-            //       we also need to remove project names from routes, as nodes
-            //       are started with _one_  project.
-
-            let mut config = opts.state.nodes.get(node_name)?.config;
-            let setup = config.setup();
-            setup.set_project(proj_lookup.clone());
-
-            opts.state.nodes.update(node_name, config)?;
+            let state = opts.state.nodes.get(node_name)?;
+            state.set_setup(state.config().setup_mut().set_project(proj_lookup.clone()))?;
 
             project::config::set_project(cfg, &(&proj_info).into()).await?;
             Ok(Some(proj_lookup.id))
@@ -141,9 +136,10 @@ pub async fn add_project_info_to_node_state(
 pub(crate) async fn init_node_state(
     opts: &CommandGlobalOpts,
     node_name: &str,
-    vault_name: Option<String>,
-    identity_name: Option<String>,
+    vault_name: Option<&str>,
+    identity_name: Option<&str>,
 ) -> Result<()> {
+    debug!(name=%node_name, "initializing node state");
     // Get vault specified in the argument, or get the default
     let vault_state = opts.state.create_vault_state(vault_name).await?;
     let identity_state = opts
@@ -154,10 +150,11 @@ pub(crate) async fn init_node_state(
     // Create the node with the given vault and identity
     let node_config = cli_state::NodeConfigBuilder::default()
         .vault(vault_state.path().clone())
-        .identity(identity_state.path)
+        .identity(identity_state.path().clone())
         .build(&opts.state)?;
     opts.state.nodes.create(node_name, node_config)?;
 
+    info!(name=%node_name, "node state initialized");
     Ok(())
 }
 
@@ -166,7 +163,7 @@ pub async fn delete_embedded_node(opts: &CommandGlobalOpts, name: &str) {
 }
 
 pub fn delete_node(opts: &CommandGlobalOpts, name: &str, force: bool) -> Result<()> {
-    opts.state.nodes.delete(name, force)?;
+    opts.state.nodes.delete_sigkill(name, force)?;
     Ok(())
 }
 
@@ -174,8 +171,8 @@ pub fn delete_all_nodes(opts: CommandGlobalOpts, force: bool) -> Result<()> {
     let nodes_states = opts.state.nodes.list()?;
     let mut deletion_errors = Vec::new();
     for s in nodes_states {
-        if let Err(e) = opts.state.nodes.delete(&s.config.name, force) {
-            deletion_errors.push((s.config.name.clone(), e));
+        if let Err(e) = opts.state.nodes.delete_sigkill(s.name(), force) {
+            deletion_errors.push((s.name().to_string(), e));
         }
     }
     if !deletion_errors.is_empty() {
@@ -191,7 +188,7 @@ pub fn set_default_node(opts: &CommandGlobalOpts, name: &str) -> anyhow::Result<
 
 pub fn check_default(opts: &CommandGlobalOpts, name: &str) -> bool {
     if let Ok(default) = opts.state.nodes.default() {
-        return default.config.name == name;
+        return default.name() == name;
     }
     false
 }

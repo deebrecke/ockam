@@ -31,7 +31,7 @@ teardown() {
   run "$OCKAM" node create server_sidecar
   assert_success
 
-  run "$OCKAM" tcp-outlet create --at /node/server_sidecar --from /service/outlet --to 127.0.0.1:5000
+  run "$OCKAM" tcp-outlet create --at /node/server_sidecar --to 127.0.0.1:5000
   assert_success
   run "$OCKAM" relay create server_sidecar --at /node/relay --to /node/server_sidecar
   assert_output --partial "forward_to_server_sidecar"
@@ -51,19 +51,19 @@ teardown() {
 # https://docs.ockam.io/
 @test "use-case - end-to-end encryption, orchestrator" {
   skip_if_orchestrator_tests_not_enabled
-  load_orchestrator_data
+  copy_local_orchestrator_data
 
   port=9001
 
   # Service
-  run "$OCKAM" node create s --project-path "$PROJECT_JSON_PATH"
-  run "$OCKAM" tcp-outlet create --at /node/s --from /service/outlet --to 127.0.0.1:5000
+  run "$OCKAM" node create s
+  run "$OCKAM" tcp-outlet create --at /node/s --to 127.0.0.1:5000
 
   fwd=$(random_str)
-  run "$OCKAM" relay create "$fwd" --at /project/default --to /node/s
+  run "$OCKAM" relay create "$fwd" --to /node/s
 
   # Client
-  run "$OCKAM" node create c --project-path "$PROJECT_JSON_PATH"
+  run "$OCKAM" node create c
   run bash -c "$OCKAM secure-channel create --from /node/c --to /project/default/service/forward_to_$fwd/service/api \
               | $OCKAM tcp-inlet create --at /node/c --from 127.0.0.1:$port --to -/service/outlet"
   assert_success
@@ -75,7 +75,7 @@ teardown() {
 # https://docs.ockam.io/use-cases/apply-fine-grained-permissions-with-attribute-based-access-control-abac
 @test "use-case - abac" {
   skip_if_orchestrator_tests_not_enabled
-  load_orchestrator_data
+  copy_local_orchestrator_data
 
   port_1=9002
   port_2=9003
@@ -94,8 +94,8 @@ teardown() {
   $OCKAM project authenticate $cp1_token --project-path "$PROJECT_JSON_PATH" --identity control_identity
   $OCKAM node create control_plane1 --project-path "$PROJECT_JSON_PATH" --identity control_identity
   $OCKAM policy create --at control_plane1 --resource tcp-outlet --expression '(= subject.component "edge")'
-  $OCKAM tcp-outlet create --at /node/control_plane1 --from /service/outlet --to 127.0.0.1:5000
-  run "$OCKAM" relay create "$fwd" --at /project/default --to /node/control_plane1
+  $OCKAM tcp-outlet create --at /node/control_plane1 --to 127.0.0.1:5000
+  run "$OCKAM" relay create "$fwd" --to /node/control_plane1
   assert_success
 
   # Edge plane

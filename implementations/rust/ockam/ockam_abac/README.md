@@ -8,7 +8,7 @@
 Ockam is a library for building devices that communicate securely, privately
 and trustfully with cloud services and other devices.
 
-Abac is responsible for performing attribute based authorization
+The ockam_abac crate is responsible for performing attribute based authorization
 control on messages within an Ockam worker system.
 
 ## Usage
@@ -17,7 +17,7 @@ Add this to your `Cargo.toml`:
 
 ```
 [dependencies]
-ockam_abac = "0.18.0"
+ockam_abac = "0.20.0"
 ```
 
 ## License
@@ -25,7 +25,6 @@ ockam_abac = "0.18.0"
 This code is licensed under the terms of the [Apache License 2.0][license-link].
 
 [main-ockam-crate-link]: https://crates.io/crates/ockam
-[ockam-abac-crate-link]: https://crates.io/crates/ockam_abac
 
 [crate-image]: https://img.shields.io/crates/v/ockam_abac.svg
 [crate-link]: https://crates.io/crates/ockam_abac

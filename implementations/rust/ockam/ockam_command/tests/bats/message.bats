@@ -12,7 +12,7 @@ setup() {
   load_bats_ext
   setup_home_dir
   skip_if_orchestrator_tests_not_enabled
-  load_orchestrator_data
+  copy_local_orchestrator_data
 }
 
 teardown() {
@@ -43,20 +43,22 @@ teardown() {
   assert_success
   m1_identifier=$($OCKAM identity show m1)
 
-  $OCKAM project enroll --member "$m1_identifier" --attribute role=member
+  run "$OCKAM" project enroll --member "$m1_identifier" --attribute role=member
+  assert_success
 
   # m1' identity was added by enroller
-  run "$OCKAM" project authenticate --identity m1 --project-path "$PROJECT_JSON_PATH"
+  run "$OCKAM" project authenticate --identity m1
+  assert_success
 
-  # m1 is a member,  must be able to contact the project' service
+  # m1 is a member, must be able to contact the project' service
   msg=$(random_str)
-  run "$OCKAM" message send --timeout 5 --identity m1 --project-path "$PROJECT_JSON_PATH" --to /project/default/service/echo "$msg"
+  run "$OCKAM" message send --timeout 5 --identity m1 --to /project/default/service/echo "$msg"
   assert_success
   assert_output "$msg"
 
   # m2 is not a member, must not be able to contact the project' service
   run "$OCKAM" identity create m2
   assert_success
-  run "$OCKAM" message send --timeout 5 --identity m2 --project-path "$PROJECT_JSON_PATH" --to /project/default/service/echo "$msg"
+  run "$OCKAM" message send --timeout 5 --identity m2 --to /project/default/service/echo "$msg"
   assert_failure
 }

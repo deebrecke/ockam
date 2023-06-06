@@ -1,6 +1,7 @@
 use crate::node::{default_node_name, node_name_parser};
 use crate::policy::{add_default_project_policy, has_policy};
 use crate::tcp::util::alias_parser;
+use crate::util::parsers::socket_addr_parser;
 use crate::util::{
     bind_to_port_check, exitcode, extract_address_value, find_available_port, node_rpc,
     process_nodes_multiaddr, RpcBuilder,
@@ -12,6 +13,7 @@ use clap::Args;
 use ockam::identity::IdentityIdentifier;
 use ockam::{Context, TcpTransport};
 use ockam_abac::Resource;
+use ockam_api::cli_state::{StateDirTrait, StateItemTrait};
 use ockam_api::nodes::models::portal::CreateInlet;
 use ockam_api::nodes::models::portal::InletStatus;
 use ockam_core::api::Request;
@@ -20,6 +22,8 @@ use ockam_multiaddr::proto::Project;
 use ockam_multiaddr::{MultiAddr, Protocol as _};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::str::FromStr;
+use std::thread::sleep;
+use std::time::Duration;
 
 /// Create TCP Inlets
 #[derive(Clone, Debug, Args)]
@@ -29,7 +33,7 @@ pub struct CreateCommand {
     at: String,
 
     /// Address on which to accept tcp connections.
-    #[arg(long, display_order = 900, id = "SOCKET_ADDRESS", default_value_t = default_from_addr())]
+    #[arg(long, display_order = 900, id = "SOCKET_ADDRESS", default_value_t = default_from_addr(), value_parser = socket_addr_parser)]
     from: SocketAddr,
 
     /// Route to a tcp outlet.
@@ -43,6 +47,14 @@ pub struct CreateCommand {
     /// Assign a name to this inlet.
     #[arg(long, display_order = 900, id = "ALIAS", value_parser = alias_parser)]
     alias: Option<String>,
+
+    /// Time to wait for the outlet to be available (ms).
+    #[arg(long, display_order = 900, id = "WAIT", default_value = "5000")]
+    connection_wait_ms: u64,
+
+    /// Time to wait before retrying to connect to outlet (ms).
+    #[arg(long, display_order = 900, id = "RETRY", default_value = "20000")]
+    retry_wait_ms: u64,
 }
 
 fn default_from_addr() -> SocketAddr {
@@ -74,7 +86,14 @@ async fn rpc(ctx: Context, (opts, mut cmd): (CommandGlobalOpts, CreateCommand)) 
 
     let tcp = TcpTransport::create(&ctx).await?;
     let node = extract_address_value(&cmd.at)?;
-    let project = opts.state.nodes.get(&node)?.setup()?.project;
+    let project = opts
+        .state
+        .nodes
+        .get(&node)?
+        .config()
+        .setup()
+        .project
+        .to_owned();
     let resource = Resource::new("tcp-inlet");
     if let Some(p) = project {
         if !has_policy(&node, &ctx, &opts, &resource).await? {
@@ -82,32 +101,64 @@ async fn rpc(ctx: Context, (opts, mut cmd): (CommandGlobalOpts, CreateCommand)) 
         }
     }
 
-    let req = {
-        let mut payload = if cmd.to.matches(0, &[Project::CODE.into()]) {
-            if cmd.authorized.is_some() {
-                return Err(anyhow!("--authorized can not be used with project addresses").into());
-            }
-            CreateInlet::via_project(cmd.from, cmd.to, route![], route![])
-        } else {
-            CreateInlet::to_node(cmd.from, cmd.to, route![], route![], cmd.authorized)
-        };
-        if let Some(a) = cmd.alias {
-            payload.set_alias(a)
+    let mut rpc = RpcBuilder::new(&ctx, &opts, &node).tcp(&tcp)?.build();
+    let via_project = if cmd.to.clone().matches(0, &[Project::CODE.into()]) {
+        if cmd.authorized.is_some() {
+            return Err(anyhow!("--authorized can not be used with project addresses").into());
         }
-        Request::post("/node/inlet").body(payload)
+        true
+    } else {
+        false
     };
 
-    let mut rpc = RpcBuilder::new(&ctx, &opts, &node).tcp(&tcp)?.build();
-    rpc.request(req).await?;
-    let inlet = rpc.parse_response::<InletStatus>()?;
+    let spinner_opts = opts.terminal.progress_spinner();
+
+    if let Some(spinner) = spinner_opts.as_ref() {
+        spinner.set_message("Creating inlet and establishing connection to outlet...");
+    }
+
+    let inlet = loop {
+        let req = {
+            let mut payload = if via_project {
+                CreateInlet::via_project(cmd.from, cmd.to.clone(), route![], route![])
+            } else {
+                CreateInlet::to_node(
+                    cmd.from,
+                    cmd.to.clone(),
+                    route![],
+                    route![],
+                    cmd.authorized.clone(),
+                )
+            };
+            if let Some(a) = cmd.alias.as_ref() {
+                payload.set_alias(a)
+            }
+            payload.set_wait_ms(cmd.connection_wait_ms);
+
+            Request::post("/node/inlet").body(payload)
+        };
+
+        rpc.request(req).await?;
+
+        match rpc.is_ok() {
+            Ok(_) => {
+                break rpc.parse_response::<InletStatus>()?;
+            }
+            Err(_) => sleep(Duration::from_millis(cmd.retry_wait_ms)),
+        }
+    };
+
+    if let Some(spinner) = spinner_opts.as_ref() {
+        spinner.finish_with_message("Inlet created and connected to outlet");
+    }
 
     let output = format!(
         r#"
-    Inlet {}
-        Address: {}
-        Worker: {}
-        Outlet: {}
-    "#,
+Inlet {}
+    Address: {}
+    Worker: {}
+    Outlet: {}
+"#,
         inlet.alias, inlet.bind_addr, inlet.worker_addr, inlet.outlet_route
     );
 

@@ -5,7 +5,9 @@ use anyhow::anyhow;
 use clap::Args;
 use ockam::identity::Identity;
 use ockam::{Context, TcpTransport};
-use ockam_api::cli_state::{IdentityState, NodeState};
+use ockam_api::cli_state::identities::IdentityState;
+use ockam_api::cli_state::traits::{StateDirTrait, StateItemTrait};
+use ockam_api::cli_state::NodeState;
 use ockam_api::nodes::models::base::NodeStatus;
 use std::time::Duration;
 
@@ -43,7 +45,7 @@ async fn run_impl(ctx: &Context, opts: CommandGlobalOpts, cmd: StatusCommand) ->
     let tcp = TcpTransport::create(ctx).await?;
     for node_state in &node_states {
         let node_infos = NodeDetails {
-            identity: node_state.config.default_identity().await?,
+            identity: node_state.config().identity().await?,
             state: node_state.clone(),
             status: get_node_status(ctx, &opts, node_state, &tcp).await?,
         };
@@ -55,7 +57,7 @@ async fn run_impl(ctx: &Context, opts: CommandGlobalOpts, cmd: StatusCommand) ->
         if cmd.all {
             status_identities.push(identity)
         } else {
-            match &identity.config.enrollment_status {
+            match &identity.config().enrollment_status {
                 Some(_enrollment) => status_identities.push(identity),
                 None => (),
             }
@@ -74,7 +76,7 @@ async fn get_node_status(
     tcp: &TcpTransport,
 ) -> Result<String> {
     let mut node_status: String = "Stopped".to_string();
-    let mut rpc = RpcBuilder::new(ctx, opts, &node_state.config.name)
+    let mut rpc = RpcBuilder::new(ctx, opts, node_state.name())
         .tcp(tcp)?
         .build();
     if rpc
@@ -104,19 +106,22 @@ async fn print_status(
 
     for (i_idx, identity) in identities.iter().enumerate() {
         println!("Identity[{i_idx}]");
-        if default_identity.config.identifier == identity.config.identifier {
+        if default_identity.config().identity.identifier()
+            == identity.config().identity.identifier()
+        {
             println!("{:2}Default: yes", "")
         }
         for line in identity.to_string().lines() {
             println!("{:2}{}", "", line);
         }
 
-        node_details.retain(|nd| nd.identity.identifier() == identity.config.identifier);
+        node_details
+            .retain(|nd| nd.identity.identifier() == identity.config().identity.identifier());
         if !node_details.is_empty() {
             println!("{:2}Linked Nodes:", "");
             for (n_idx, node) in node_details.iter().enumerate() {
                 println!("{:4}Node[{}]:", "", n_idx);
-                println!("{:6}Name: {}", "", node.state.config.name);
+                println!("{:6}Name: {}", "", node.state.name());
                 println!("{:6}Status: {}", "", node.status)
             }
         }

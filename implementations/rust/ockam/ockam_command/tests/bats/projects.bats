@@ -12,7 +12,7 @@ setup() {
   load_bats_ext
   setup_home_dir
   skip_if_orchestrator_tests_not_enabled
-  load_orchestrator_data
+  copy_local_orchestrator_data
 }
 
 teardown() {
@@ -75,7 +75,7 @@ teardown() {
   # Create node for the non-enrolled identity using the exported project information
   run "$OCKAM" node create green --project-path "$ENROLLED_OCKAM_HOME/project.json"
 
-  # Node can't create forwarder as it isn't a member
+  # Node can't create relay as it isn't a member
   fwd=$(random_str)
   run "$OCKAM" relay create "$fwd"
   assert_failure

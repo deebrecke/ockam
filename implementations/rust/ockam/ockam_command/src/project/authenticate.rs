@@ -19,6 +19,7 @@ use crate::{CommandGlobalOpts, Result};
 
 use crate::project::util::create_secure_channel_to_authority;
 use ockam_api::authenticator::direct::TokenAcceptorClient;
+use ockam_api::cli_state::{StateDirTrait, StateItemTrait};
 use ockam_api::config::lookup::ProjectAuthority;
 use ockam_api::DefaultAddress;
 use ockam_core::route;
@@ -28,7 +29,7 @@ use ockam_node::RpcClient;
 
 /// Authenticate with a project node
 #[derive(Clone, Debug, Args)]
-pub struct AuthCommand {
+pub struct AuthenticateCommand {
     #[arg(long = "okta", group = "authentication_method")]
     okta: bool,
 
@@ -51,7 +52,7 @@ fn parse_enroll_ticket(input: &str) -> Result<EnrollmentTicket> {
     Ok(serde_json::from_slice(&decoded)?)
 }
 
-impl AuthCommand {
+impl AuthenticateCommand {
     pub fn run(self, opts: CommandGlobalOpts) {
         node_rpc(run_impl, (opts, self));
     }
@@ -59,7 +60,7 @@ impl AuthCommand {
 
 async fn run_impl(
     ctx: Context,
-    (opts, cmd): (CommandGlobalOpts, AuthCommand),
+    (opts, cmd): (CommandGlobalOpts, AuthenticateCommand),
 ) -> crate::Result<()> {
     let node_name = start_embedded_node(&ctx, &opts, Some(&cmd.trust_opts)).await?;
     let project_as_string: String;
@@ -85,7 +86,7 @@ async fn run_impl(
                     .projects
                     .default()
                     .context("A default project or project parameter is required.")?;
-                default_project.path
+                default_project.path().clone()
             }
         };
 
@@ -151,10 +152,12 @@ async fn run_impl(
     )
     .await?;
 
-    opts.state.projects.create(&project.name, project.clone())?;
+    opts.state
+        .projects
+        .overwrite(&project.name, project.clone())?;
     opts.state
         .trust_contexts
-        .create(&project.name, project.clone().try_into()?)?;
+        .overwrite(&project.name, project.clone().try_into()?)?;
 
     let credential = client2.credential().await?;
     println!("---");

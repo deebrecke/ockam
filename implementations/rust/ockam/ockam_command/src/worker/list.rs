@@ -3,15 +3,20 @@ use crate::util::{api, node_rpc, RpcBuilder};
 use crate::{docs, CommandGlobalOpts};
 use clap::Args;
 use ockam::{Context, TcpTransport};
+use ockam_api::cli_state::StateDirTrait;
 use ockam_api::nodes::models::workers::WorkerList;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
 
-const HELP_DETAIL: &str = "";
+const LONG_ABOUT: &str = include_str!("./static/list/long_about.txt");
+const AFTER_LONG_HELP: &str = include_str!("./static/list/after_long_help.txt");
 
-/// List workers
+/// List workers on a node
 #[derive(Clone, Debug, Args)]
-#[command(after_long_help = docs::after_help(HELP_DETAIL))]
+#[command(
+long_about = docs::about(LONG_ABOUT),
+after_long_help = docs::after_help(AFTER_LONG_HELP)
+)]
 pub struct ListCommand {
     /// Node at which to lookup workers (required)
     #[arg(value_name = "NODE", long, default_value_t = default_node_name(), value_parser = node_name_parser, display_order = 800)]
@@ -30,7 +35,7 @@ async fn run_impl(
 ) -> crate::Result<()> {
     if let Ok(node_state) = opts.state.nodes.get(&cmd.at) {
         let tcp = TcpTransport::create(&ctx).await?;
-        let mut rpc = RpcBuilder::new(&ctx, &opts, &node_state.config.name)
+        let mut rpc = RpcBuilder::new(&ctx, &opts, node_state.name())
             .tcp(&tcp)?
             .build();
         if rpc
@@ -39,7 +44,7 @@ async fn run_impl(
             .is_ok()
         {
             let workers = rpc.parse_response::<WorkerList>()?;
-            println!("Node: {}", &node_state.config.name);
+            println!("Node: {}", &node_state.name());
             print!("{}", WorkerDisplay(workers))
         }
     }

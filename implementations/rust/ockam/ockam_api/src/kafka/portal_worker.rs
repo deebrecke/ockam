@@ -21,7 +21,12 @@ pub(crate) const MAX_KAFKA_MESSAGE_SIZE: u32 = 16 * 1024 * 1024;
 
 enum Receiving {
     Requests,
-    Responses,
+
+    // When we are receiving responses we have the responsibility of validating
+    // next step in onward route.
+    // Since we know it beforehand we simply ignore the provided onward route
+    // and use the one we know.
+    Responses(Route),
 }
 
 /// Acts like a relay for messages between tcp inlet and outlet for both directions.
@@ -151,16 +156,21 @@ impl KafkaPortalWorker {
             routed_message.local_message().transport().onward_route,
             routed_message.local_message().transport().return_route
         );
-        //to correctly proxy messages to the inlet or outlet side
-        //we invert the return route when a message pass through
         let mut local_message = routed_message.into_local_message();
         let transport = local_message.transport_mut();
+
+        //to correctly proxy messages to the inlet or outlet side
+        //we invert the return route when a message pass through
         transport
             .return_route
             .modify()
             .prepend(self.other_worker_address.clone());
 
-        transport.onward_route.step()?;
+        if let Receiving::Responses(fixed_onward_route) = &self.receiving {
+            transport.onward_route = fixed_onward_route.clone();
+        } else {
+            transport.onward_route.step()?;
+        }
 
         trace!(
             "after: onwards={:?}; return={:?};",
@@ -178,12 +188,18 @@ impl KafkaPortalWorker {
         buffer: Bytes,
         local_info: &[LocalInfo],
     ) -> ockam_core::Result<()> {
+        let onward_route = if let Receiving::Responses(fixed_onward_route) = &self.receiving {
+            fixed_onward_route.clone()
+        } else {
+            onward_route.clone().modify().pop_front().into()
+        };
+
         for chunk in buffer.chunks(MAX_PAYLOAD_SIZE) {
             //to correctly proxy messages to the inlet or outlet side
             //we invert the return route when a message pass through
             let message = LocalMessage::new(
                 TransportMessage::v1(
-                    onward_route.clone().modify().pop_front(),
+                    onward_route.clone(),
                     return_route
                         .clone()
                         .modify()
@@ -220,7 +236,7 @@ impl KafkaPortalWorker {
                         .intercept_request(context, complete_kafka_message)
                         .await
                 }
-                Receiving::Responses => {
+                Receiving::Responses(_) => {
                     self.shared_protocol_state
                         .intercept_response(context, complete_kafka_message, &self.inlet_map)
                         .await
@@ -247,13 +263,16 @@ impl KafkaPortalWorker {
 impl KafkaPortalWorker {
     ///returns address used for inlet communications, aka the one facing the client side,
     /// used for requests.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn start_kafka_portal(
         context: &mut Context,
         secure_channel_controller: Arc<dyn KafkaSecureChannelController>,
         uuid_to_name: TopicUuidMap,
         inlet_map: KafkaInletController,
         max_kafka_message_size: Option<u32>,
-        flow_control: Option<&(FlowControls, FlowControlId)>,
+        flow_controls: &FlowControls,
+        flow_control_id: Option<FlowControlId>,
+        inlet_responder_route: Route,
     ) -> ockam_core::Result<Address> {
         let shared_protocol_state = Interceptor::new(secure_channel_controller, uuid_to_name);
 
@@ -274,7 +293,7 @@ impl KafkaPortalWorker {
             inlet_map: inlet_map.clone(),
             shared_protocol_state,
             other_worker_address: requests_worker_address.clone(),
-            receiving: Receiving::Responses,
+            receiving: Receiving::Responses(inlet_responder_route),
             disconnect_received: disconnect_received.clone(),
             decoder: KafkaMessageDecoder::new(),
             max_message_size: max_kafka_message_size.unwrap_or(MAX_KAFKA_MESSAGE_SIZE),
@@ -289,10 +308,10 @@ impl KafkaPortalWorker {
             )
             .await?;
 
-        if let Some((flow_controls, flow_control_id)) = flow_control {
+        if let Some(flow_control_id) = flow_control_id {
             flow_controls.add_consumer(
                 &responses_worker_address.clone(),
-                flow_control_id,
+                &flow_control_id,
                 FlowControlPolicy::ProducerAllowMultiple,
             );
         }
@@ -528,7 +547,7 @@ mod test {
     }
 
     #[allow(non_snake_case)]
-    #[ockam_macros::test(timeout = 60_000)]
+    #[ockam_macros::test(timeout = 5_000)]
     async fn kafka_portal_worker__almost_over_limit_than_limit_kafka_message__two_kafka_message_pass(
         context: &mut Context,
     ) -> ockam::Result<()> {
@@ -626,7 +645,9 @@ mod test {
             Default::default(),
             inlet_map,
             Some(TEST_MAX_KAFKA_MESSAGE_SIZE),
+            &flow_controls,
             None,
+            route![context.address()],
         )
         .await
         .unwrap()
@@ -688,7 +709,9 @@ mod test {
             Default::default(),
             inlet_map.clone(),
             None,
+            &flow_controls,
             None,
+            route![context.address()],
         )
         .await?;
 

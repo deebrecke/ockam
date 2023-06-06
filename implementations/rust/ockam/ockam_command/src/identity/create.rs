@@ -3,7 +3,7 @@ use crate::{docs, CommandGlobalOpts};
 use clap::Args;
 use ockam::identity::Identity;
 use ockam::Context;
-use ockam_api::cli_state::traits::{StateItemDirTrait, StateTrait};
+use ockam_api::cli_state::traits::{StateDirTrait, StateItemTrait};
 use rand::prelude::random;
 
 const LONG_ABOUT: &str = include_str!("./static/create/long_about.txt");
@@ -12,11 +12,11 @@ const AFTER_LONG_HELP: &str = include_str!("./static/create/after_long_help.txt"
 /// Create a new identity
 #[derive(Clone, Debug, Args)]
 #[command(
-    long_about = docs::about(LONG_ABOUT),
-    after_long_help = docs::after_help(AFTER_LONG_HELP)
+long_about = docs::about(LONG_ABOUT),
+after_long_help = docs::after_help(AFTER_LONG_HELP)
 )]
 pub struct CreateCommand {
-    #[arg(hide_default_value = true, default_value_t = hex::encode(&random::<[u8;4]>()))]
+    #[arg(hide_default_value = true, default_value_t = hex::encode(& random::< [u8; 4] > ()))]
     name: String,
 
     /// Vault name to store the identity key
@@ -42,7 +42,10 @@ impl CreateCommand {
 
     pub async fn create_identity(&self, options: CommandGlobalOpts) -> crate::Result<Identity> {
         let default_vault_created = self.vault.is_none() && options.state.vaults.default().is_err();
-        let vault_state = options.state.create_vault_state(self.vault.clone()).await?;
+        let vault_state = options
+            .state
+            .create_vault_state(self.vault.as_deref())
+            .await?;
         let mut output = String::new();
         if default_vault_created {
             output.push_str(&format!("Default vault created: {}\n", &vault_state.name()));
@@ -50,9 +53,9 @@ impl CreateCommand {
 
         let identity_state = options
             .state
-            .create_identity_state(Some(self.name.clone()), vault_state.get().await?)
+            .create_identity_state(Some(self.name.as_str()), vault_state.get().await?)
             .await?;
-        let identity = identity_state.config.identity();
+        let identity = identity_state.config().identity();
 
         output.push_str(&format!("Identity created: {}", identity.identifier()));
 

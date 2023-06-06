@@ -8,6 +8,24 @@
 Ockam is a library for building devices that communicate securely, privately
 and trustfully with cloud services and other devices.
 
+This crate provides an implementation of multiformats.io/multiaddr.
+
+The main entities of this crate are:
+
+- [`MultiAddr`]: A sequence of protocol values.
+- [`Protocol`]: A type that can be read from and written to strings and bytes.
+- [`Codec`]: A type that understands protocols.
+- [`ProtoValue`]: A section of a MultiAddr.
+
+## Usage
+
+Add this to your `Cargo.toml`:
+
+```
+[dependencies]
+ockam_multiaddr = "0.20.0"
+```
+
 ## License
 
 This code is licensed under the terms of the [Apache License 2.0][license-link].
