@@ -314,5 +314,4 @@ This file contains attributions for any 3rd-party open source code used in this 
 | tzdata                        | MIT                                                  | https://hex.pm/packages/tzdata                                            |
 | unicode_util_compat           | Apache 2.0                                           | https://hex.pm/packages/unicode_util_compat                               |
 | worker_pool                   | Apache 2.0                                           | https://hex.pm/packages/worker_pool                                       |
-| cowboy                        | ISC                                                  | https://hex.pm/packages/cowboy                                            |
-Apache 2.0                                           | https://hex.pm/packages/plug                                             
+                                         
