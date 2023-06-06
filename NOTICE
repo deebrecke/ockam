@@ -317,6 +317,4 @@ This file contains attributions for any 3rd-party open source code used in this 
 | cowboy                        | ISC                                                  | https://hex.pm/packages/cowboy                                            |
 | cowboy_telemetry              | Apache 2.0                                           | https://hex.pm/packages/cowboy_telemetry                                  |
 | cowlib                        | ISC                                                  | https://hex.pm/packages/cowlib                                            |
-| plug                          | Apache 2.0                                           | https://hex.pm/packages/plug                                              |
-| plug_cowboy                   | Apache 2.0                                           | https://hex.pm/packages/plug_cowboy                                       |
-| plug_crypto                   | Apache 2.0                                           | https://hex.pm/packages/plug_crypto                                       |
+| plug                          | Apache 2.0                                           | https://hex.pm/packages/plug                                             
