@@ -311,7 +311,5 @@ This file contains attributions for any 3rd-party open source code used in this 
 | telemetry_influxdb            | MIT                                                  | https://hex.pm/packages/telemetry_influxdb                                |
 | telemetry_poller              | Apache 2.0                                           | https://hex.pm/packages/telemetry_poller                                  |
 | timex                         | MIT                                                  | https://hex.pm/packages/timex                                             |
-| tzdata                        | MIT                                                  | https://hex.pm/packages/tzdata                                            |
-| unicode_util_compat           | Apache 2.0                                           | https://hex.pm/packages/unicode_util_compat                               |
-| worker_pool                   | Apache 2.0                                           | https://hex.pm/packages/worker_pool                                       |
+                                        | https://hex.pm/packages/worker_pool                                       |
                                          
